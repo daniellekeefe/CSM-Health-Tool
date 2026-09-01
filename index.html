@@ -43,6 +43,28 @@ tr.order-row { cursor:pointer; } tr.order-row:hover { background:#f4f8fd; }
 .legend{font-size:11.5px;color:#5b6770;margin-top:14px;line-height:1.6}
 small.mut{color:#8a8f96}
 .arrow { font-size:10px; margin-left:3px; color:#8a8f96; }
+
+/* --- added for carbon-copy detail drill-down (ported from the live artifact) --- */
+.detail-inner { padding:8px 14px 16px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.detail h4 { margin:10px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#3a6ea5; }
+.kv { font-size:13px; line-height:1.7; } .kv b { color:#1a2027; }
+.note { grid-column:1/-1; background:#fff; border:1px solid #e3e7ec; border-left:4px solid #3a6ea5; border-radius:8px; padding:10px 13px; font-size:13.5px; line-height:1.55; margin-top:0; white-space:normal; }
+.note.red{border-left-color:#d64545}.note.yellow{border-left-color:#e0a008}.note.green{border-left-color:#2e9e5b}
+.datesline{grid-column:1/-1;font-size:12.5px;color:#37424b;margin:-2px 0 2px}
+.lc { grid-column:1/-1; }
+.splitcount{font-size:12px;color:#5b6770;margin:2px 0 6px}
+.lctbl th { position:static; box-shadow:none; }
+.litem td { background:#f0f4f8; font-weight:500; }
+.cmn{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#1a2027}
+.flags { grid-column:1/-1; }
+.flag { display:inline-block; background:#fff3f3; color:#a31919; border:1px solid #f3cccc; border-radius:6px; padding:3px 8px; font-size:12px; margin:3px 6px 3px 0; }
+.flag.warn{background:#fdf6e3;color:#8a6400;border-color:#eddca0}.flag.note{background:#eef3f8;color:#3a6ea5;border-color:#cfdef0}
+.good{color:#1f7a45;font-weight:600}.bad{color:#a31919;font-weight:600}.near{color:#8a6400;font-weight:600}.muted2{color:#8a8f96}
+.team{font-size:12px;color:#37424b}
+.bpill{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600}
+.bpill.pass{background:#dff3e6;color:#1f7a45}.bpill.under{background:#fbe4e4;color:#a31919}.bpill.over{background:#fdeede;color:#9a5b00}.bpill.na{background:#eef1f4;color:#5b6770}
+.fmtbadge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;margin:2px 5px 2px 0;border:1px solid #e3e7ec;background:#fff}
+.fmtbadge.pass{border-color:#bfe6cd;color:#1f7a45;background:#f1faf4}.fmtbadge.under{border-color:#f3cccc;color:#a31919;background:#fdf2f2}.fmtbadge.over{border-color:#eddca0;color:#9a5b00;background:#fdf8ec}.fmtbadge.na{border-color:#dde2e8;color:#5b6770}
 </style>
 </head>
 <body>
@@ -89,6 +111,7 @@ const openRows = new Set();
 
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function statusLabel(s){ return {red:'Immediate', yellow:'Keep an eye', green:'Doing well', pending:'Pending'}[s] || s; }
+const SYM = {pass:'✓', under:'✗', over:'⚠', na:'~'};
 
 async function load(){
   try {
@@ -187,9 +210,10 @@ function renderTable(){
   const list = getFiltered();
   const rowsHtml = list.map(o => {
     const isOpen = openRows.has(o.id);
+    const fmtBadges = (o.fmtRoll && o.fmtRoll.length) ? o.fmtRoll.map(t => `<span class="fmtbadge ${t.cls}">${esc(t.short)} ${SYM[t.cls]||''}</span>`).join(' ') : '';
     let rows = `<tr class="order-row" data-id="${o.id}">
       <td><span class="chip ${o.status}">${esc(o.statusLabel)}</span></td>
-      <td><strong>${esc(o.machine)}</strong><br><small class="mut">${o.id}</small></td>
+      <td><strong>${esc(o.machine)}</strong><br><small class="mut">${o.id}</small>${fmtBadges ? '<br>'+fmtBadges : ''}</td>
       <td>${esc(o.csm)}</td>
       <td>${esc(o.am)}</td>
       <td>${esc(o.ta)}</td>
@@ -231,26 +255,70 @@ function renderTable(){
   });
 }
 
-function lineTable(lines, title){
-  if (!lines.length) return '';
-  const rows = lines.map(l => `<tr><td>${esc(l.line)}</td><td class="mono">${l.goal.toLocaleString()}</td><td class="mono">${l.delivered.toLocaleString()}</td><td class="mono">${esc(l.pace)}</td></tr>`).join('');
-  return `${title ? `<h4>${esc(title)}</h4>` : ''}<table class="lctbl"><thead><tr><th>Line</th><th>Goal</th><th>Delivered</th><th>Pace%</th></tr></thead><tbody>${rows}</tbody></table>`;
+function lineTable(lines){
+  if (!lines || !lines.length) return '';
+  let html = `<table class="lctbl"><thead><tr><th>Line item / creative (CMN)</th><th>Size</th><th>BP imps</th><th>BP imp goal</th><th>Current BP pace</th><th>Benchmark</th><th>3P disc</th></tr></thead><tbody>`;
+  lines.forEach(l => {
+    html += `<tr class="litem"><td>${esc(l.line)}</td><td>${esc(l.size)}</td><td class="mono">${esc((l.imps||0).toLocaleString())}</td><td class="mono">${l.goal!=null ? esc(l.goal.toLocaleString()) : '—'}</td><td class="mono ${l.paceCls}">${esc(l.paceTxt)}</td><td><span class="bpill ${l.benchCls}">${esc(l.benchTxt)}</span></td><td class="mono">—</td></tr>`;
+    (l.creatives||[]).forEach(c => {
+      html += `<tr><td style="padding-left:22px"><span class="cmn">${esc(c.cname)}</span><br><small class="muted2">${esc(c.type)} · ${esc(c.dev)}${c.env ? ' · '+esc(c.env) : ''}</small></td><td>${esc(c.size)}</td><td class="mono">${esc((c.imps||0).toLocaleString())}</td><td class="mono muted2">—</td><td class="mono muted2">—</td><td><span class="bpill ${c.gradeCls}">${esc(c.gradeTxt)}</span></td><td class="mono">${esc(c.disc)}</td></tr>`;
+    });
+  });
+  return html + `</tbody></table>`;
+}
+
+function fmtBadgeSpan(t){
+  let s = `<span class="fmtbadge ${t.cls}">${esc(t.short)}: ${esc(t.txt)} ${SYM[t.cls]||''}</span>`;
+  if (t.expandTxt) s += ` <span class="fmtbadge ${t.expandCls}">${esc(t.expandTxt)} ${SYM[t.expandCls]||''}</span>`;
+  return s;
 }
 
 function renderDetail(o){
   let html = '';
-  if (o.nonAvLines.length) {
-    html += lineTable(o.nonAvLines, '');
+
+  // Note box (colored by status)
+  html += `<div class="note ${esc(o.status)}"><b>Note:</b> ${esc(o.note)}</div>`;
+
+  // Pace/perf limiting factors (CORE, informational)
+  if (o.limitingFactors) {
+    html += `<div class="note" style="border-left-color:#8a6400;background:#fdfaf0"><b>⚑ Pace/perf limiting factors (Order Tracker):</b> ${esc(o.limitingFactors)}<br><small class="mut">Informational — does not affect scoring.</small></div>`;
+  }
+
+  // Dates line: order flight / flight goal / overall pace, then current billing period / BP goal / delivered / BP pace
+  let dl = `<b>Order flight:</b> ${esc(o.flightTxt)}`;
+  if (o.flightGoalTxt) dl += ` &nbsp;·&nbsp; <b>Flight goal:</b> ${esc(o.flightGoalTxt)} &nbsp;·&nbsp; <b>overall pace:</b> ${esc(o.overallTxt)} (vs full-flight CORE goal)`;
+  if (o.bpWindowTxt) {
+    dl += `<br><b>Current billing period:</b> ${esc(o.bpWindowTxt)}`;
+    if (o.bpGoalTxt) dl += ` &nbsp;·&nbsp; <b>BP goal:</b> ${esc(o.bpGoalTxt)} imps &nbsp;·&nbsp; <b>delivered:</b> ${esc(o.bpDeliveredTxt)} &nbsp;·&nbsp; <b>BP pace:</b> ${esc(o.currentBpTxt)}`;
+    if (o.bpGoalFromCore) dl += ` &nbsp;·&nbsp; <span class="muted2">goal from CORE</span>`;
+  }
+  html += `<div class="datesline">${dl}</div>`;
+
+  // Ad-format rollup
+  html += `<div class="lc"><h4>Performance by ad format (vs benchmark) — paid</h4><div>${(o.fmtRoll && o.fmtRoll.length) ? o.fmtRoll.map(fmtBadgeSpan).join(' ') : '<small class="mut">—</small>'}</div>`;
+  if (o.avRoll && o.avRoll.length) {
+    html += `<h4>Added value performance <small class="mut" style="text-transform:none;letter-spacing:0">(informational — does not affect order status)</small></h4><div>${o.avRoll.map(fmtBadgeSpan).join(' ')}</div>`;
+  }
+
+  // Line items & creatives
+  html += `<h4>Line items &amp; creatives — current billing period</h4>`;
+  if (o.lineCreative && o.lineCreative.length) {
+    html += `<div class="splitcount">${o.paceOff||0} line(s) off pace · ${o.benchOff||0} creative(s) off benchmark</div>`;
+    html += lineTable(o.lineCreative);
   } else if (o.disclaimer) {
     html += `<div class="disclaimer">${esc(o.disclaimer)}</div>`;
+  } else {
+    html += `<div class="disclaimer">No further detail on file for this order.</div>`;
   }
-  if (o.avLines.length) {
-    html += lineTable(o.avLines, 'Added value (informational)');
-  }
-  if (o.limitingFactors) {
-    html += `<div class="note"><b>Pace/perf limiting factors (Order Tracker):</b>\n${esc(o.limitingFactors)}\n<br><em>Informational — does not affect scoring.</em></div>`;
-  }
-  if (!html) html = '<div class="disclaimer">No further detail on file for this order.</div>';
+  html += `</div>`; // close .lc
+
+  // Team & order
+  html += `<div><h4>Team &amp; order</h4><div class="kv"><span class="team"><b>CSM:</b> ${esc(o.csm)} · <b>AM:</b> ${esc(o.am)} · <b>TA:</b> ${esc(o.ta)}</span><br>
+    ${esc(o.adv)} · ${esc(o.agency)}<br>${esc(o.ind)}${o.bench ? '<br>Benchmark (CORE): '+esc(o.bench) : ''}${o.ovNotes ? '<br>'+esc(o.ovNotes) : ''}</div></div>`;
+
+  // Flags
+  html += `<div class="flags"><h4>Flags</h4>${(o.flags && o.flags.length) ? o.flags.map(f=>`<span class="flag ${f.c}">${esc(f.t)}</span>`).join('') : '<small class="mut">No order-level flags.</small>'}</div>`;
+
   return html;
 }
 
