@@ -48,7 +48,7 @@ small.mut{color:#8a8f96}
 <body>
 <div class="wrap">
   <h1>CSM Order Health — Live Status</h1>
-  <div class="sub">All 123 managed live orders &middot; filter by CSM / AM / TA &middot; click a row to drill into line-level goal, delivered &amp; pace</div>
+  <div class="sub">All managed live orders &middot; filter by CSM / AM / TA &middot; click a row to drill into line-level goal, delivered &amp; pace</div>
   <div id="refreshBanner" class="refresh-banner"></div>
   <div class="tiles" id="tiles"></div>
   <div class="controls">
@@ -80,7 +80,7 @@ small.mut{color:#8a8f96}
     </div>
   </div>
   <div id="content"><div class="loading">Loading…</div></div>
-  <div class="legend">Status bands: &lt;90% or &gt;125% = Immediate &middot; 90&ndash;93% or 110&ndash;125% = Keep an eye &middot; 93&ndash;110% = Doing well &middot; no CORE goal/pacing on file = Pending. Overall = goal-weighted running-period pace across currently-running billing periods (non-AV lines), using CORE goals where harvested. CORE = Order Tracker official pacing.</div>
+  <div class="legend">Status bands: &lt;90% or &gt;125% = Immediate &middot; 90&ndash;93% or 110&ndash;125% = Keep an eye &middot; 93&ndash;110% = Doing well &middot; no CORE goal/pacing on file = Pending. <b>Current BP</b> is computed at the line-item level (delivered &divide; goal-to-date by elapsed days) &mdash; the spend-protecting read that drives status. <b>Overall</b> is flight pacing vs. the full-flight CORE goal (informational, shown where a goal is on file). <b>CORE</b> is Order Tracker's own self-reported pacing.</div>
 </div>
 <script>
 let DATA = null;
@@ -114,12 +114,15 @@ function renderBanner(){
 }
 
 function renderTiles(){
-  const c = DATA.meta.statusCounts;
+  const list = getFiltered();
+  const c = {red:0, yellow:0, green:0, pending:0};
+  list.forEach(o => { c[o.status] = (c[o.status]||0) + 1; });
   document.getElementById('tiles').innerHTML = `
     <div class="tile red"><div class="n">${c.red}</div><div class="l">Immediate</div></div>
     <div class="tile yellow"><div class="n">${c.yellow}</div><div class="l">Keep an eye</div></div>
     <div class="tile green"><div class="n">${c.green}</div><div class="l">Doing well</div></div>
-    <div class="tile tot"><div class="n">${DATA.meta.totalOrders}</div><div class="l">Total managed orders</div></div>
+    <div class="tile" style="border-left:4px solid #8a8f96"><div class="n">${c.pending}</div><div class="l">Pending</div></div>
+    <div class="tile tot"><div class="n">${list.length}</div><div class="l">Total (filtered)</div></div>
   `;
 }
 
@@ -172,6 +175,7 @@ const COLS = [
   {key:'am', label:'AM'},
   {key:'ta', label:'TA'},
   {key:'overallTxt', label:'Overall'},
+  {key:'currentBpTxt', label:'Current BP'},
   {key:'coreTxt', label:'CORE'},
   {key:'flightTxt', label:'Flight'},
   {key:'discTxt', label:'3P Disc'},
@@ -179,6 +183,7 @@ const COLS = [
 ];
 
 function renderTable(){
+  renderTiles();
   const list = getFiltered();
   const rowsHtml = list.map(o => {
     const isOpen = openRows.has(o.id);
@@ -189,12 +194,13 @@ function renderTable(){
       <td>${esc(o.am)}</td>
       <td>${esc(o.ta)}</td>
       <td class="mono">${esc(o.overallTxt)}</td>
+      <td class="mono">${esc(o.currentBpTxt)}</td>
       <td class="mono">${esc(o.coreTxt)}</td>
       <td>${esc(o.flightTxt)}</td>
       <td class="mono">${esc(o.discTxt)}</td>
       <td>${esc(o.primaryKpiTxt)}</td>
     </tr>`;
-    if (isOpen) rows += `<tr class="detail"><td colspan="10"><div class="detail-inner">${renderDetail(o)}</div></td></tr>`;
+    if (isOpen) rows += `<tr class="detail"><td colspan="11"><div class="detail-inner">${renderDetail(o)}</div></td></tr>`;
     return rows;
   }).join('');
 
@@ -206,7 +212,7 @@ function renderTable(){
   document.getElementById('content').innerHTML = `
     <table>
       <thead><tr>${headHtml}</tr></thead>
-      <tbody>${rowsHtml || '<tr><td colspan="10" class="loading">No orders match these filters</td></tr>'}</tbody>
+      <tbody>${rowsHtml || '<tr><td colspan="11" class="loading">No orders match these filters</td></tr>'}</tbody>
     </table>`;
 
   document.querySelectorAll('#content th').forEach(th => {
