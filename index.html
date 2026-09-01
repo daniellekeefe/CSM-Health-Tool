@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSM Order Health — Live Status</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin:0; font-family:-apple-system,"Segoe UI",Arial,sans-serif; background:#f6f7f9; color:#1a2027; font-size:14px; }
+.wrap { max-width:1240px; margin:0 auto; padding:18px 20px 60px; }
+h1 { font-size:20px; margin:0 0 2px; }
+.sub { color:#5b6770; font-size:12.5px; margin-bottom:14px; }
+.refresh-banner { background:#eef3f8; border:1px solid #cfdef0; border-radius:10px; padding:10px 14px; font-size:12.5px; color:#37424b; margin-bottom:16px; line-height:1.6; }
+.refresh-banner b { color:#1a2027; }
+.refresh-banner.stale { background:#fdf6e3; border-color:#eddca0; }
+.controls{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.controls label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6770;display:block;margin-bottom:3px}
+.controls select{font-size:13px;padding:6px 8px;border:1px solid #cfd6dd;border-radius:8px;background:#fff;min-width:150px}
+.controls input{font-size:13px;padding:6px 10px;border:1px solid #cfd6dd;border-radius:8px;background:#fff;width:100%}
+.tiles { display:flex; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+.tile { flex:1; min-width:120px; background:#fff; border:1px solid #e3e7ec; border-radius:10px; padding:14px 16px; }
+.tile .n { font-size:28px; font-weight:700; line-height:1; } .tile .l { font-size:12px; color:#5b6770; margin-top:5px; text-transform:uppercase; letter-spacing:.04em; }
+.tile.red{border-left:4px solid #d64545}.tile.yellow{border-left:4px solid #e0a008}.tile.green{border-left:4px solid #2e9e5b}.tile.tot{border-left:4px solid #3a6ea5}
+table { width:100%; border-collapse:collapse; background:#fff; border:1px solid #e3e7ec; border-radius:10px; }
+#content > table > thead th { position:sticky; top:0; z-index:5; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#5b6770; padding:10px 12px; background:#fafbfc; box-shadow:inset 0 -1px 0 #e3e7ec, 0 1px 3px rgba(0,0,0,0.05); cursor:pointer; user-select:none; }
+th:hover { color:#1a2027; }
+td { padding:11px 12px; border-bottom:1px solid #eef1f4; vertical-align:middle; }
+tr.order-row { cursor:pointer; } tr.order-row:hover { background:#f4f8fd; }
+.chip { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap; }
+.chip.red{background:#fbe4e4;color:#a31919}.chip.yellow{background:#fcf2d6;color:#8a6400}.chip.green{background:#dff3e6;color:#1f7a45}.chip.pending{background:#eef1f4;color:#5b6770}
+.mono { font-variant-numeric:tabular-nums; }
+.detail { background:#fafbfc; }
+.detail-inner { padding:14px 18px 20px; }
+.detail h4 { margin:10px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#3a6ea5; }
+.note { background:#fff; border:1px solid #e3e7ec; border-left:4px solid #3a6ea5; border-radius:8px; padding:10px 13px; font-size:13.5px; line-height:1.55; margin-top:10px; white-space:pre-wrap; }
+.disclaimer { font-style:italic; color:#5b6770; font-size:13px; margin:6px 0; }
+.lctbl { width:100%; border-collapse:collapse; font-size:12.5px; background:#fff; margin-top:6px; }
+.lctbl th { background:#f4f6f8; font-size:10.5px; padding:6px 8px; position:static; box-shadow:none; }
+.lctbl td { padding:6px 8px; border-bottom:1px solid #f0f2f5; }
+.loading,.error{padding:40px;text-align:center;color:#5b6770}.error{color:#a31919}
+.legend{font-size:11.5px;color:#5b6770;margin-top:14px;line-height:1.6}
+small.mut{color:#8a8f96}
+.arrow { font-size:10px; margin-left:3px; color:#8a8f96; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CSM Order Health — Live Status</h1>
+  <div class="sub">All 123 managed live orders &middot; filter by CSM / AM / TA &middot; click a row to drill into line-level goal, delivered &amp; pace</div>
+  <div id="refreshBanner" class="refresh-banner"></div>
+  <div class="tiles" id="tiles"></div>
+  <div class="controls">
+    <div>
+      <label>CSM</label>
+      <select id="fCsm"><option>All</option></select>
+    </div>
+    <div>
+      <label>AM</label>
+      <select id="fAm"><option>All</option></select>
+    </div>
+    <div>
+      <label>TA</label>
+      <select id="fTa"><option>All</option></select>
+    </div>
+    <div>
+      <label>Status</label>
+      <select id="fStatus">
+        <option>All</option>
+        <option value="red">Immediate</option>
+        <option value="yellow">Keep an eye</option>
+        <option value="green">Doing well</option>
+        <option value="pending">Pending</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:200px">
+      <label>Search order / advertiser</label>
+      <input id="fSearch" placeholder="Type to filter…">
+    </div>
+  </div>
+  <div id="content"><div class="loading">Loading…</div></div>
+  <div class="legend">Status bands: &lt;90% or &gt;125% = Immediate &middot; 90&ndash;93% or 110&ndash;125% = Keep an eye &middot; 93&ndash;110% = Doing well &middot; no CORE goal/pacing on file = Pending. Overall = goal-weighted running-period pace across currently-running billing periods (non-AV lines), using CORE goals where harvested. CORE = Order Tracker official pacing.</div>
+</div>
+<script>
+let DATA = null;
+let sortKey = null, sortDir = 1;
+const openRows = new Set();
+
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function statusLabel(s){ return {red:'Immediate', yellow:'Keep an eye', green:'Doing well', pending:'Pending'}[s] || s; }
+
+async function load(){
+  try {
+    const res = await fetch('./data.json', {cache:'no-store'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DATA = await res.json();
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="error">Could not load data.json: ' + esc(e.message) + '</div>';
+    return;
+  }
+  renderBanner();
+  renderTiles();
+  populateFilters();
+  renderTable();
+}
+
+function renderBanner(){
+  const m = DATA.meta;
+  const el = document.getElementById('refreshBanner');
+  if (!m.coreLive) el.classList.add('stale');
+  el.innerHTML = `<b>Refreshed ${esc(m.refreshedAtDisplay)}</b> &middot; Rill delivery ${esc(m.rillThrough)} &middot; CORE goals/pacing as of <b>${esc(m.coreAsOf)}</b>` +
+    (m.coreLive ? '' : `<br>${esc(m.coreNote)}`);
+}
+
+function renderTiles(){
+  const c = DATA.meta.statusCounts;
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile red"><div class="n">${c.red}</div><div class="l">Immediate</div></div>
+    <div class="tile yellow"><div class="n">${c.yellow}</div><div class="l">Keep an eye</div></div>
+    <div class="tile green"><div class="n">${c.green}</div><div class="l">Doing well</div></div>
+    <div class="tile tot"><div class="n">${DATA.meta.totalOrders}</div><div class="l">Total managed orders</div></div>
+  `;
+}
+
+function uniq(arr){ return Array.from(new Set(arr.filter(x=>x))).sort(); }
+
+function populateFilters(){
+  const csms = uniq(DATA.orders.map(o=>o.csm));
+  const ams = uniq(DATA.orders.map(o=>o.am));
+  const tas = uniq(DATA.orders.map(o=>o.ta));
+  const fill = (id, vals) => {
+    const sel = document.getElementById(id);
+    vals.forEach(v => { const opt = document.createElement('option'); opt.value = v; opt.textContent = v; sel.appendChild(opt); });
+    sel.addEventListener('change', renderTable);
+  };
+  fill('fCsm', csms); fill('fAm', ams); fill('fTa', tas);
+  document.getElementById('fStatus').addEventListener('change', renderTable);
+  document.getElementById('fSearch').addEventListener('input', renderTable);
+}
+
+function getFiltered(){
+  const csm = document.getElementById('fCsm').value;
+  const am = document.getElementById('fAm').value;
+  const ta = document.getElementById('fTa').value;
+  const status = document.getElementById('fStatus').value;
+  const q = document.getElementById('fSearch').value.trim().toLowerCase();
+  let list = DATA.orders.filter(o =>
+    (csm==='All' || o.csm===csm) &&
+    (am==='All' || o.am===am) &&
+    (ta==='All' || o.ta===ta) &&
+    (status==='All' || o.status===status) &&
+    (!q || (o.machine+' '+o.id).toLowerCase().includes(q))
+  );
+  if (sortKey){
+    list = list.slice().sort((a,b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return -1*sortDir;
+      if (av > bv) return 1*sortDir;
+      return 0;
+    });
+  }
+  return list;
+}
+
+const COLS = [
+  {key:'status', label:'Status'},
+  {key:'machine', label:'Order'},
+  {key:'csm', label:'CSM'},
+  {key:'am', label:'AM'},
+  {key:'ta', label:'TA'},
+  {key:'overallTxt', label:'Overall'},
+  {key:'coreTxt', label:'CORE'},
+  {key:'flightTxt', label:'Flight'},
+  {key:'discTxt', label:'3P Disc'},
+  {key:'primaryKpiTxt', label:'Primary KPI'},
+];
+
+function renderTable(){
+  const list = getFiltered();
+  const rowsHtml = list.map(o => {
+    const isOpen = openRows.has(o.id);
+    let rows = `<tr class="order-row" data-id="${o.id}">
+      <td><span class="chip ${o.status}">${esc(o.statusLabel)}</span></td>
+      <td><strong>${esc(o.machine)}</strong><br><small class="mut">${o.id}</small></td>
+      <td>${esc(o.csm)}</td>
+      <td>${esc(o.am)}</td>
+      <td>${esc(o.ta)}</td>
+      <td class="mono">${esc(o.overallTxt)}</td>
+      <td class="mono">${esc(o.coreTxt)}</td>
+      <td>${esc(o.flightTxt)}</td>
+      <td class="mono">${esc(o.discTxt)}</td>
+      <td>${esc(o.primaryKpiTxt)}</td>
+    </tr>`;
+    if (isOpen) rows += `<tr class="detail"><td colspan="10"><div class="detail-inner">${renderDetail(o)}</div></td></tr>`;
+    return rows;
+  }).join('');
+
+  const headHtml = COLS.map(c => {
+    const arrow = sortKey===c.key ? `<span class="arrow">${sortDir===1?'▲':'▼'}</span>` : '';
+    return `<th data-key="${c.key}">${esc(c.label)}${arrow}</th>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML = `
+    <table>
+      <thead><tr>${headHtml}</tr></thead>
+      <tbody>${rowsHtml || '<tr><td colspan="10" class="loading">No orders match these filters</td></tr>'}</tbody>
+    </table>`;
+
+  document.querySelectorAll('#content th').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+      renderTable();
+    });
+  });
+  document.querySelectorAll('#content tr.order-row').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const id = Number(tr.dataset.id);
+      if (openRows.has(id)) openRows.delete(id); else openRows.add(id);
+      renderTable();
+    });
+  });
+}
+
+function lineTable(lines, title){
+  if (!lines.length) return '';
+  const rows = lines.map(l => `<tr><td>${esc(l.line)}</td><td class="mono">${l.goal.toLocaleString()}</td><td class="mono">${l.delivered.toLocaleString()}</td><td class="mono">${esc(l.pace)}</td></tr>`).join('');
+  return `${title ? `<h4>${esc(title)}</h4>` : ''}<table class="lctbl"><thead><tr><th>Line</th><th>Goal</th><th>Delivered</th><th>Pace%</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderDetail(o){
+  let html = '';
+  if (o.nonAvLines.length) {
+    html += lineTable(o.nonAvLines, '');
+  } else if (o.disclaimer) {
+    html += `<div class="disclaimer">${esc(o.disclaimer)}</div>`;
+  }
+  if (o.avLines.length) {
+    html += lineTable(o.avLines, 'Added value (informational)');
+  }
+  if (o.limitingFactors) {
+    html += `<div class="note"><b>Pace/perf limiting factors (Order Tracker):</b>\n${esc(o.limitingFactors)}\n<br><em>Informational — does not affect scoring.</em></div>`;
+  }
+  if (!html) html = '<div class="disclaimer">No further detail on file for this order.</div>';
+  return html;
+}
+
+load();
+</script>
+</body>
+</html>
